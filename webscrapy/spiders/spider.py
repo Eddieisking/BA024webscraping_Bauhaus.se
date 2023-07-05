@@ -14,8 +14,11 @@ from webscrapy.items import WebscrapyItem
 
 class SpiderSpider(scrapy.Spider):
     name = "spider"
-    allowed_domains = ["www.diy.com", "api.bazaarvoice.com"]
-    headers = {}  #
+    allowed_domains = ["www.bauhaus.se", "staticw2.yotpo.com"]
+    headers = {
+        # 'app_key': 'Q8o34TFsHR6KLWxFbCCuNnMd1090IusN6buIuzr0',
+        # 'Accept': 'application/json',
+    }  #
 
     def start_requests(self):
         # keywords = ['DeWalt', 'Black+and+Decker', 'Stanley', 'Craftsman', 'Porter-Cable', 'Bostitch', 'Irwin+Tools',
@@ -26,7 +29,7 @@ class SpiderSpider(scrapy.Spider):
         # from search words to generate product_urls
         for keyword in keywords:
             push_key = {'keyword': keyword}
-            search_url = f'https://www.diy.com/search?term={keyword}'
+            search_url = f'https://www.bauhaus.se/varumarken/{keyword}'
 
             yield Request(
                 url=search_url,
@@ -37,84 +40,159 @@ class SpiderSpider(scrapy.Spider):
     def parse(self, response, **kwargs):
 
         # Extract the pages of product_urls
-        page = response.xpath('//main[data-test-id="PageContent"]/div//div/p/text()')[0].extract()
+        page = response.xpath('//*[@id="html-body"]/div[@class="toolbar-maincontent-wrapper page-main"]//div['
+                              '@class="category-products-toolbar__amount"]/text()')[0].extract()
         page_number = int(''.join(filter(str.isdigit, page)))
-        pages = (page_number // 24) + 1
-        print(page_number)
+        pages = (page_number // 35) + 1
+
         # Based on pages to build product_urls
         keyword = kwargs['keyword']
-        product_urls = [f'https://www.diy.com/search?page={page}&term={keyword}' for page
-                        in range(1, pages+1)]
+        product_urls = [f'https://www.bauhaus.se/varumarken/{keyword}?p={page}' for page
+                        in range(1, pages + 1)]
 
-        # for product_url in product_urls:
-        #     yield Request(url=product_url, callback=self.product_parse)
+        for product_url in product_urls:
+            yield Request(url=product_url, callback=self.product_parse)
 
     def product_parse(self, response: Request, **kwargs):
 
-        product_list = response.xpath('//*[@id="content"]//main//ul/li')
+        product_list = response.xpath('//*[@id="layer-product-list"]/div[@class="grid products-grid products '
+                                      'wrapper"]/ol/li')
 
         for product in product_list:
-            product_href = product.xpath('.//div[@data-test-id="product-panel"]/a/@href')[0].extract()
-            product_detailed_url = f'https://www.castorama.pl{product_href}'
-            yield Request(url=product_detailed_url, callback=self.product_detailed_parse)
+            product_href = product.xpath('.//a[@class="card"]/@href')[0].extract()
+            product_id = product.xpath('./a//div[@class="card__details-sub"]/div/@data-product-id')[0].extract()
+            push_key = {'product_id': product_id}
+            product_detailed_url = product_href
+            yield Request(url=product_detailed_url, callback=self.product_detailed_parse, cb_kwargs=push_key)
 
     def product_detailed_parse(self, response, **kwargs):
+        product_id = kwargs['product_id']
+        customer_review_url = f'https://staticw2.yotpo.com/batch/app_key/Q8o34TFsHR6KLWxFbCCuNnMd1090IusN6buIuzr0' \
+                              f'/domain_key/{product_id}/widget/main_widget '
 
-        product_id = response.xpath('.//*[@id="product-details"]//td[@data-test-id="product-ean-spec"]/text()')[
-            0].extract()
+        headers = {
+            'Content-Type': 'application/json',
+        }
 
-        # Product reviews url
-        product_detailed_href = f'https://api.bazaarvoice.com/data/batch.json?passkey' \
-                                f'=cauXqtM5OxUGSckj1VCPUOc1lnChnQoTYXBE5j082Xuc0&apiversion=5.5&displaycode=17031' \
-                                f'-pl_pl&resource.q0=reviews&filter.q0=isratingsonly%3Aeq%3Afalse&filter.q0=productid' \
-                                f'%3Aeq%3A{product_id}&filter.q0=contentlocale%3Aeq%3Apl*%2Cpl_PL&sort.q0=rating' \
-                                f'%3Adesc&stats.q0=reviews&filteredstats.q0=reviews&include.q0=authors%2Cproducts' \
-                                f'%2Ccomments&filter_reviews.q0=contentlocale%3Aeq%3Apl*%2Cpl_PL' \
-                                f'&filter_reviewcomments.q0=contentlocale%3Aeq%3Apl*%2Cpl_PL&filter_comments.q0' \
-                                f'=contentlocale%3Aeq%3Apl*%2Cpl_PL&limit.q0=8&offset.q0=0&limit_comments.q0=3 '
+        payload = {
+            "methods": [
+                {
+                    "method": "main_widget",
+                    # "method": "reviews",
 
-        if product_detailed_href:
-            yield Request(url=product_detailed_href, callback=self.review_parse)
+                    "params": {
+                        "pid": product_id,
+                        "order_metadata_fields": {},
+                        "widget_product_id": product_id,
+                    }
+                }
+            ],
+            "app_key": "Q8o34TFsHR6KLWxFbCCuNnMd1090IusN6buIuzr0",
+            "is_mobile": False,
+            "widget_version": "2023-07-05_08-43-33"
+        }
+
+        yield scrapy.Request(url=customer_review_url, method='POST', headers=headers, body=json.dumps(payload),
+                             callback=self.review_parse,)
 
     def review_parse(self, response: Request, **kwargs):
-
         datas = json.loads(response.body)
-        batch_results = datas.get('BatchedResults', {})
 
-        offset_number = 0
-        limit_number = 0
-        total_number = 0
+        method = datas[0]["method"]
+        result = datas[0]["result"]
+        widget_product_id = datas[0]["widget_product_id"]
 
-        if "q1" in batch_results:
-            result_key = "q1"
+        selector = scrapy.Selector(text=result)
+        # Total numbers of reviews, each page has 10 reviews
+        total_reviews = selector.xpath('//span[@class="font-color-gray based-on"]/text()').extract_first()
+        if total_reviews:
+            total_number = int(re.findall(r'\d+', total_reviews)[0])
+            pages = (total_number // 10) + 1
         else:
-            result_key = "q0"
+            pages = 0
 
-        offset_number = batch_results.get(result_key, {}).get('Offset', 0)
-        limit_number = batch_results.get(result_key, {}).get('Limit', 0)
-        total_number = batch_results.get(result_key, {}).get('TotalResults', 0)
+        # Extract the reviews from the result
+        review_list = selector.xpath(
+            '//div[@class="yotpo-nav-content"]//div[@class="yotpo-review yotpo-regular-box  "]')
 
-        for i in range(limit_number):
+        for review in review_list:
             item = WebscrapyItem()
-            results = batch_results.get(result_key, {}).get('Results', [])
 
-            try:
-                item['review_id'] = results[i].get('Id', 'N/A')
-                item['product_name'] = results[i].get('ProductId', 'N/A')
-                item['customer_name'] = results[i].get('UserNickname', 'N/A')
-                item['customer_rating'] = results[i].get('Rating', 'N/A')
-                item['customer_date'] = results[i].get('SubmissionTime', 'N/A')
-                item['customer_review'] = results[i].get('ReviewText', 'N/A')
-                item['customer_support'] = results[i].get('TotalPositiveFeedbackCount', 'N/A')
-                item['customer_disagree'] = results[i].get('TotalNegativeFeedbackCount', 'N/A')
+            item['review_id'] = review.xpath('./@data-review-id')[0].extract()
+            item['customer_name'] = review.xpath('.//div[@class="yotpo-header-element "]/span/text()')[0].extract()
+            item['customer_rating'] = float(
+                review.xpath('.//div[@class="yotpo-review-stars "]/span[@class="sr-only"]/text()')[0].extract().split()[0])
+            item['customer_date'] = review.xpath('.//span[@class="y-label yotpo-review-date"]/text()')[0].extract()
+            item['customer_review'] = review.xpath('.//div[@class="content-review"]/text()')[0].extract()
+            item['product_name'] = review.xpath(
+                './/a[@class="product-link-wrapper "]/div[@class="y-label product-link"]/text()')[0].extract()
+            item['customer_support'] = review.xpath(
+                './/div[@class="yotpo-footer "]/div[@class="yotpo-helpful"]/span[@data-type="up"]/text()')[0].extract()
+            item['customer_disagree'] = review.xpath(
+                './/div[@class="yotpo-footer "]/div[@class="yotpo-helpful"]/span[@data-type="down"]/text()')[0].extract()
 
-                yield item
-            except Exception as e:
-                print('Exception:', e)
-                break
+            yield item
 
-        if (offset_number + limit_number) < total_number:
-            offset_number += limit_number
-            next_page = re.sub(r'limit.q0=\d+&offset.q0=\d+', f'limit.q0={30}&offset.q0={offset_number}', response.url)
-            yield Request(url=next_page, callback=self.review_parse)
+        if pages > 1:
+            for i in range(2, pages + 1):
+                customer_review_url_more = f'https://staticw2.yotpo.com/batch/app_key/Q8o34TFsHR6KLWxFbCCuNnMd1090IusN6buIuzr0/domain_key/{widget_product_id}/widget/reviews'
+
+                headers = {
+                    'Content-Type': 'application/json',
+                }
+                payload = {
+                    "methods": [
+                        {
+                            "method": "reviews",
+                            "params": {
+                                "pid": widget_product_id,
+                                "order_metadata_fields": {},
+                                "widget_product_id": widget_product_id,
+                                "data_source": "default",
+                                "page": i,
+                                "host-widget": "main_widget",
+                                "is_mobile": False,
+                                "pictures_per_review": 10
+                            }
+                        }
+                    ],
+                    "app_key": "Q8o34TFsHR6KLWxFbCCuNnMd1090IusN6buIuzr0",
+                    "is_mobile": False,
+                    "widget_version": "2023-07-05_08-43-33"
+                }
+
+                yield scrapy.Request(url=customer_review_url_more, method='POST', headers=headers, body=json.dumps(payload),
+                                     callback=self.review_parse_more)
+
+    def review_parse_more(self, response: Request, **kwargs):
+        datas = json.loads(response.body)
+
+        method = datas[0]["method"]
+        result = datas[0]["result"]
+        widget_product_id = datas[0]["widget_product_id"]
+        selector = scrapy.Selector(text=result)
+
+        # Extract the reviews from the result
+        review_list = selector.xpath(
+            '//div[@class="yotpo-review yotpo-regular-box  "]')
+
+        for review in review_list:
+            item = WebscrapyItem()
+
+            item['review_id'] = review.xpath('./@data-review-id')[0].extract()
+            item['customer_name'] = review.xpath('.//div[@class="yotpo-header-element "]/span/text()')[0].extract()
+            item['customer_rating'] = float(
+                review.xpath('.//div[@class="yotpo-review-stars "]/span[@class="sr-only"]/text()')[0].extract().split()[0])
+            item['customer_date'] = review.xpath('.//span[@class="y-label yotpo-review-date"]/text()')[0].extract()
+            item['customer_review'] = review.xpath('.//div[@class="content-review"]/text()')[0].extract()
+            item['product_name'] = review.xpath(
+                './/a[@class="product-link-wrapper "]/div[@class="y-label product-link"]/text()')[0].extract()
+            item['customer_support'] = review.xpath(
+                './/div[@class="yotpo-footer "]/div[@class="yotpo-helpful"]/span[@data-type="up"]/text()')[0].extract()
+            item['customer_disagree'] = review.xpath(
+                './/div[@class="yotpo-footer "]/div[@class="yotpo-helpful"]/span[@data-type="down"]/text()')[0].extract()
+
+            yield item
+
+
 
