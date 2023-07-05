@@ -4,20 +4,35 @@
 # Date:  22/06/2023
 """
 import requests
+import re
 
-proxy_url = 'https://api.stormproxies.cn/web_v1/ip/get-ip-v3?app_key=64318690cd8b0c33d643b078d3974ebf&pt=9&num=20&ep=&cc=&state=&city=&life=5&protocol=1&format=txt&lb=%5Cr%5Cn'
+# Clear the proxy_text
 proxy_text = 'proxy_text.txt'
 
-response = requests.get(proxy_url)
+with open(proxy_text, 'w') as file:
+    file.write('')
 
-if response.status_code == 200:
-    data = response.text.strip().split('\n')
-    proxy_list = [f'http://{ip}' for ip in data]
 
-    with open(proxy_text, 'w') as file:
-        file.write('\n'.join(proxy_list))
+def proxy_generation(number):
+    for i in range(number):
+        proxy_url = 'https://myip.ipip.net'
+        proxy = 'http://storm-stst123_area-GB:123123@eu.stormip.cn:1000'
 
-    print("Data saved to", proxy_text)
-else:
-    print("Failed to fetch data from the website.")
+        response = requests.get(proxy_url, proxies={'http': proxy, 'https': proxy})
+        proxy_text = 'proxy_text.txt'
 
+        if response.status_code == 200:
+            ip_address = re.findall(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', response.text)
+            proxy_list = [f'http://{ip}:6023' for ip in ip_address]
+            print(proxy_list)
+            with open(proxy_text, 'a') as file:
+                file.write('\n'.join(proxy_list))
+                file.write('\n')
+
+            print("Data saved to", proxy_text)
+        else:
+            print("Failed to fetch data from the website.")
+
+
+# Change the number to decide the number of proxies generated
+proxy_generation(2)
