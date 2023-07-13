@@ -48,13 +48,12 @@ class SpiderSpider(scrapy.Spider):
         # Based on pages to build product_urls
         keyword = kwargs['keyword']
         product_urls = [f'https://www.bauhaus.se/varumarken/{keyword}?p={page}' for page
-                        in range(1, pages + 1)]
+                        in range(1, 2)]  #pages + 1
 
         for product_url in product_urls:
             yield Request(url=product_url, callback=self.product_parse)
 
     def product_parse(self, response: Request, **kwargs):
-
         product_list = response.xpath('//*[@id="layer-product-list"]/div[@class="grid products-grid products '
                                       'wrapper"]/ol/li')
 
