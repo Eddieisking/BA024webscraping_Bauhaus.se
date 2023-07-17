@@ -133,11 +133,11 @@ PROXIES_FILE = 'proxy_text.txt'
 DOWNLOADER_MIDDLEWARES = {
     # "webscrapy.middlewares.SeleniumMiddleware": 90,
     "webscrapy.middlewares.WebscrapyDownloaderMiddleware": 100,
-    # 'webscrapy.middlewares.RotateProxyMiddleware': 91,
+    'webscrapy.middlewares.RotateProxyMiddleware': 91,
 }
 
 # Proxy settings
-HTTP_PROXY = "http://storm-stst123_area-IT:123123@eu.stormip.cn:1000"
+# HTTP_PROXY = "http://storm-stst123_area-IT:123123@eu.stormip.cn:1000"
 # HTTPS_PROXY = "https://storm-stst123_area-IT:123123@eu.stormip.cn:1000"
 
 # Enable or disable extensions
@@ -150,7 +150,7 @@ HTTP_PROXY = "http://storm-stst123_area-IT:123123@eu.stormip.cn:1000"
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
    # "webscrapy.pipelines.ExcelPipeline": 300,
-   #  "webscrapy.pipelines.DatabasePipeline": 500,
+    "webscrapy.pipelines.DatabasePipeline": 500,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
