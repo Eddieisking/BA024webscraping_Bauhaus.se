@@ -38,7 +38,6 @@ class SpiderSpider(scrapy.Spider):
             )
 
     def parse(self, response, **kwargs):
-
         # Extract the pages of product_urls
         page = response.xpath('//*[@id="html-body"]/div[@class="toolbar-maincontent-wrapper page-main"]//div['
                               '@class="category-products-toolbar__amount"]/text()')[0].extract()
@@ -51,9 +50,10 @@ class SpiderSpider(scrapy.Spider):
                         in range(1, pages + 1)]  #pages + 1
 
         for product_url in product_urls:
-            yield Request(url=product_url, callback=self.product_parse)
+            yield Request(url=product_url, callback=self.product_parse, meta={'product_brand': keyword})
 
     def product_parse(self, response: Request, **kwargs):
+        product_brand = response.meta['product_brand']
         product_list = response.xpath('//*[@id="layer-product-list"]/div[@class="grid products-grid products '
                                       'wrapper"]/ol/li')
 
@@ -62,10 +62,26 @@ class SpiderSpider(scrapy.Spider):
             product_id = product.xpath('./a//div[@class="card__details-sub"]/div/@data-product-id')[0].extract()
             push_key = {'product_id': product_id}
             product_detailed_url = product_href
-            yield Request(url=product_detailed_url, callback=self.product_detailed_parse, cb_kwargs=push_key)
+            yield Request(url=product_detailed_url, callback=self.product_detailed_parse, cb_kwargs=push_key, meta={'product_brand': product_brand})
 
     def product_detailed_parse(self, response, **kwargs):
+        product_brand = response.meta['product_brand']
         product_id = kwargs['product_id']
+        product_detail = response.xpath('//tbody/tr')
+        product_model = 'N/A'
+        product_type = 'N/A'
+
+        for product in product_detail:
+            attr = product.xpath('./th/text()')[0].extract()
+            value = product.xpath('./td/text()')[0].extract()
+
+            if attr == "Varumärke":
+                product_brand = value if value else 'N/A'
+            elif attr == 'Artikelnummer':
+                product_model = value if value else 'N/A'
+            elif attr == 'Typ':
+                product_type = value if value else 'N/A'
+
         customer_review_url = f'https://staticw2.yotpo.com/batch/app_key/Q8o34TFsHR6KLWxFbCCuNnMd1090IusN6buIuzr0' \
                               f'/domain_key/{product_id}/widget/main_widget '
 
@@ -92,9 +108,13 @@ class SpiderSpider(scrapy.Spider):
         }
 
         yield scrapy.Request(url=customer_review_url, method='POST', headers=headers, body=json.dumps(payload),
-                             callback=self.review_parse,)
+                             callback=self.review_parse, meta={'product_model':product_model, 'product_brand':product_brand, 'product_type':product_type})
 
     def review_parse(self, response: Request, **kwargs):
+        product_brand = response.meta['product_brand']
+        product_model = response.meta['product_model']
+        product_type = response.meta['product_type']
+
         datas = json.loads(response.body)
 
         method = datas[0]["method"]
@@ -125,6 +145,10 @@ class SpiderSpider(scrapy.Spider):
             item['customer_review'] = review.xpath('.//div[@class="content-review"]/text()')[0].extract()
             item['product_name'] = review.xpath(
                 './/a[@class="product-link-wrapper "]/div[@class="y-label product-link"]/text()')[0].extract()
+            item['product_website'] = 'bauhaus_se'
+            item['product_type'] = product_type
+            item['product_brand'] = product_brand
+            item['product_model'] = product_model
             item['customer_support'] = review.xpath(
                 './/div[@class="yotpo-footer "]/div[@class="yotpo-helpful"]/span[@data-type="up"]/text()')[0].extract()
             item['customer_disagree'] = review.xpath(
@@ -161,9 +185,12 @@ class SpiderSpider(scrapy.Spider):
                 }
 
                 yield scrapy.Request(url=customer_review_url_more, method='POST', headers=headers, body=json.dumps(payload),
-                                     callback=self.review_parse_more)
+                                     callback=self.review_parse_more, meta={'product_model':product_model, 'product_brand':product_brand, 'product_type':product_type})
 
     def review_parse_more(self, response: Request, **kwargs):
+        product_brand = response.meta['product_brand']
+        product_model = response.meta['product_model']
+        product_type = response.meta['product_type']
         datas = json.loads(response.body)
 
         method = datas[0]["method"]
@@ -186,6 +213,10 @@ class SpiderSpider(scrapy.Spider):
             item['customer_review'] = review.xpath('.//div[@class="content-review"]/text()')[0].extract()
             item['product_name'] = review.xpath(
                 './/a[@class="product-link-wrapper "]/div[@class="y-label product-link"]/text()')[0].extract()
+            item['product_website'] = 'bauhaus_se'
+            item['product_type'] = product_type
+            item['product_brand'] = product_brand
+            item['product_model'] = product_model
             item['customer_support'] = review.xpath(
                 './/div[@class="yotpo-footer "]/div[@class="yotpo-helpful"]/span[@data-type="up"]/text()')[0].extract()
             item['customer_disagree'] = review.xpath(
